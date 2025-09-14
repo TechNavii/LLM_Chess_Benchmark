@@ -48,7 +48,7 @@ npm run web
 - ⚠️ Visual warnings for invalid move attempts
 - 🏳️ Automatic forfeit with AI-generated explanations
 
-## Popular Models
+## Models
 
 - `openai/gpt-4o-mini`
 - `anthropic/claude-3-haiku`
@@ -58,6 +58,3 @@ npm run web
 
 View all models at [OpenRouter Models](https://openrouter.ai/models)
 
-## License
-
-MIT
