@@ -87,6 +87,9 @@ function App() {
         setGameResult({ winner: data.result.winner, reason: data.result.reason });
       } else if (data.result.result === 'draw') {
         updateGameState({ gameStatus: GameStatus.DRAW });
+        // Display specific draw reason
+        const drawReason = data.result.drawReason || data.result.reason;
+        setGameResult({ winner: undefined, reason: drawReason });
       } else if (data.result.result === 'timeout') {
         updateGameState({ gameStatus: GameStatus.TIMEOUT });
         setGameResult({ winner: data.result.winner, reason: 'Timeout' });
@@ -110,6 +113,15 @@ function App() {
     socket.on('game:invalidMove', (data) => {
       console.log('Invalid move:', data);
       setInvalidMove(data);
+    });
+
+    socket.on('game:drawOffer', (data) => {
+      console.log('Draw offer:', data);
+      // Optionally display draw offer in UI
+      if (data.accepted !== undefined) {
+        const status = data.accepted ? 'accepted' : 'declined';
+        console.log(`Draw offer ${status}: ${data.reason || 'No reason given'}`);
+      }
     });
 
     return () => {

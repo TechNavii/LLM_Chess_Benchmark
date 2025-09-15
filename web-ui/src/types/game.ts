@@ -27,10 +27,30 @@ export const GameStatus = {
   DRAW: 'draw',
   PAUSED: 'paused',
   TIMEOUT: 'timeout',
-  FORFEIT: 'forfeit'
+  FORFEIT: 'forfeit',
+  DRAW_OFFERED: 'draw_offered'
 } as const;
 
 export type GameStatus = typeof GameStatus[keyof typeof GameStatus];
+
+export const DrawReason = {
+  STALEMATE: 'stalemate',
+  THREEFOLD_REPETITION: 'threefold_repetition',
+  FIFTY_MOVE_RULE: 'fifty_move_rule',
+  INSUFFICIENT_MATERIAL: 'insufficient_material',
+  AGREEMENT: 'agreement'
+} as const;
+
+export type DrawReason = typeof DrawReason[keyof typeof DrawReason];
+
+export interface GameResult {
+  winner?: 'white' | 'black';
+  result: 'win' | 'draw' | 'timeout' | 'forfeit';
+  reason: string;
+  drawReason?: DrawReason;
+  finalPosition?: string;
+  moveCount: number;
+}
 
 export interface PlayerInfo {
   id: string;

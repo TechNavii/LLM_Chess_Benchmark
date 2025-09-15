@@ -4,7 +4,7 @@ import { IGameTimerManager } from '../domain/timer/GameTimerManager';
 import { IStateManager } from '../infrastructure/storage/StateManager';
 import { GameConfiguration } from '../infrastructure/config/ConfigTypes';
 import { GameContext } from '../domain/player/PlayerTypes';
-import { GameStatus, PlayerColor, GameResult } from '../shared/types/CommonTypes';
+import { GameStatus, PlayerColor, GameResult, DrawReason, DrawOffer } from '../shared/types/CommonTypes';
 import { InvalidMoveError, TimeoutError, ErrorResolution } from '../shared/errors/GameErrors';
 import { LLMApiError } from '../infrastructure/api/LLMApiTypes';
 import { Chess } from 'chess.js';
@@ -86,13 +86,21 @@ export class GameOrchestrator implements IGameOrchestrator {
       this.logger(`\n--- Move ${Math.floor(this.moveCount / 2) + 1} - ${currentPlayer.color}'s turn ---`);
 
       try {
-        const timeUsed = await this.processTurn(currentPlayer);
+        const { timeUsed, move } = await this.processTurn(currentPlayer);
 
         if (this.timerManager.isTimeExpired(currentPlayer.id)) {
           throw new TimeoutError(currentPlayer.id, currentPlayer.color);
         }
 
         this.timerManager.addIncrement(currentPlayer.id, 5000);
+
+        // Handle draw offer if present
+        if (move && (move as any).offerDraw) {
+          const drawResult = await this.handleDrawOffer(currentPlayer);
+          if (drawResult) {
+            return drawResult;
+          }
+        }
 
         this.playerManager.switchTurn();
         this.moveCount++;
@@ -106,9 +114,12 @@ export class GameOrchestrator implements IGameOrchestrator {
         if (gameState.gameStatus === GameStatus.CHECKMATE) {
           return this.createResult('win', gameState);
         } else if (gameState.gameStatus === GameStatus.STALEMATE) {
-          return this.createResult('draw', gameState);
+          return this.createResult('draw', gameState, DrawReason.STALEMATE);
         } else if (gameState.gameStatus === GameStatus.DRAW) {
-          return this.createResult('draw', gameState);
+          // Detect specific draw reason
+          const drawReason = await this.detectDrawReason();
+          this.logger(`[GameLoop] Game drawn: ${drawReason || 'Unknown reason'}`);
+          return this.createResult('draw', gameState, drawReason);
         }
 
       } catch (error) {
@@ -212,7 +223,7 @@ export class GameOrchestrator implements IGameOrchestrator {
     return this.gameManager;
   }
 
-  private async processTurn(player: any): Promise<number> {
+  private async processTurn(player: any): Promise<{ timeUsed: number; move: any }> {
     this.timerManager.startTimer(player.id);
 
     try {
@@ -297,7 +308,7 @@ export class GameOrchestrator implements IGameOrchestrator {
         p.updateGameContext(this.gameManager.getCurrentGameState());
       }
 
-      return timeUsed;
+      return { timeUsed, move };
     } catch (error) {
       this.timerManager.pauseTimer(player.id);
       throw error;
@@ -391,7 +402,7 @@ export class GameOrchestrator implements IGameOrchestrator {
     return ErrorResolution.FORFEIT;
   }
 
-  private createResult(type: 'win' | 'draw', gameState: any): GameResult {
+  private createResult(type: 'win' | 'draw', gameState: any, drawReason?: DrawReason): GameResult {
     let winner: PlayerColor | undefined;
     let reason: string;
 
@@ -399,13 +410,42 @@ export class GameOrchestrator implements IGameOrchestrator {
       winner = gameState.currentPlayer === PlayerColor.WHITE ? PlayerColor.BLACK : PlayerColor.WHITE;
       reason = 'Checkmate';
     } else {
-      reason = gameState.gameStatus === GameStatus.STALEMATE ? 'Stalemate' : 'Draw';
+      // Provide specific draw reason
+      if (drawReason) {
+        switch (drawReason) {
+          case DrawReason.STALEMATE:
+            reason = 'Stalemate - No legal moves available';
+            break;
+          case DrawReason.THREEFOLD_REPETITION:
+            reason = 'Threefold Repetition - Same position occurred 3 times';
+            break;
+          case DrawReason.FIFTY_MOVE_RULE:
+            reason = 'Fifty-Move Rule - 50 moves without pawn move or capture';
+            break;
+          case DrawReason.INSUFFICIENT_MATERIAL:
+            reason = 'Insufficient Material - Neither side can checkmate';
+            break;
+          case DrawReason.AGREEMENT:
+            reason = 'Draw by Agreement - Both players agreed to draw';
+            break;
+          default:
+            reason = 'Draw';
+        }
+      } else if (gameState.gameStatus === GameStatus.STALEMATE) {
+        reason = 'Stalemate';
+        drawReason = DrawReason.STALEMATE;
+      } else {
+        reason = 'Draw';
+      }
     }
+
+    this.logger(`[GameResult] ${type === 'win' ? `Winner: ${winner}` : 'Draw'} - ${reason}`);
 
     return {
       winner,
       result: type,
       reason,
+      drawReason,
       finalPosition: gameState.fen,
       moveCount: this.moveCount
     };
@@ -488,5 +528,58 @@ Respond with only your explanation, no additional formatting.`;
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async detectDrawReason(): Promise<DrawReason | undefined> {
+    const gameState = this.gameManager.getCurrentGameState();
+    const chess = new Chess(gameState.fen);
+
+    if (chess.isStalemate()) {
+      return DrawReason.STALEMATE;
+    }
+
+    if (chess.isInsufficientMaterial()) {
+      return DrawReason.INSUFFICIENT_MATERIAL;
+    }
+
+    if (chess.isThreefoldRepetition()) {
+      return DrawReason.THREEFOLD_REPETITION;
+    }
+
+    // Check for fifty-move rule
+    const halfmoveClock = parseInt(gameState.fen.split(' ')[4]);
+    if (halfmoveClock >= 100) {
+      return DrawReason.FIFTY_MOVE_RULE;
+    }
+
+    return undefined;
+  }
+
+  private async handleDrawOffer(offeringPlayer: any): Promise<GameResult | null> {
+    const opponent = this.playerManager.getOpponent(offeringPlayer.color);
+
+    if (!opponent) {
+      return null;
+    }
+
+    this.logger(`[DrawOffer] ${offeringPlayer.color} offers a draw`);
+
+    // Check if opponent has a method to respond to draw offers
+    if (!opponent.respondToDrawOffer) {
+      this.logger(`[DrawOffer] ${opponent.color} cannot respond to draw offers`);
+      return null;
+    }
+
+    const gameContext = this.buildGameContext(opponent);
+    const response = await opponent.respondToDrawOffer(gameContext);
+
+    if (response.acceptDraw) {
+      this.logger(`[DrawOffer] ${opponent.color} accepts the draw: ${response.reason || 'No reason given'}`);
+      const gameState = this.gameManager.getCurrentGameState();
+      return this.createResult('draw', gameState, DrawReason.AGREEMENT);
+    } else {
+      this.logger(`[DrawOffer] ${opponent.color} declines the draw: ${response.reason || 'No reason given'}`);
+      return null;
+    }
   }
 }

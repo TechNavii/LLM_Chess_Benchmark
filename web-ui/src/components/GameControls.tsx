@@ -6,11 +6,38 @@ import { GameStatus } from '../types/game';
 
 const GameControls = () => {
   const { gameStatus, gameResult, resetGame } = useGameStore();
-  const [whiteModel, setWhiteModel] = useState('openai/gpt-4o-mini');
-  const [blackModel, setBlackModel] = useState('anthropic/claude-3-haiku');
-  const [timeMinutes, setTimeMinutes] = useState(10);
-  const [increment, setIncrement] = useState(5);
+
+  // Load saved preferences from localStorage
+  const [whiteModel, setWhiteModel] = useState(() =>
+    localStorage.getItem('whiteModel') || 'openai/gpt-4o-mini'
+  );
+  const [blackModel, setBlackModel] = useState(() =>
+    localStorage.getItem('blackModel') || 'anthropic/claude-3-haiku'
+  );
+  const [timeMinutes, setTimeMinutes] = useState(() =>
+    parseInt(localStorage.getItem('timeMinutes') || '10')
+  );
+  const [increment, setIncrement] = useState(() =>
+    parseInt(localStorage.getItem('increment') || '5')
+  );
   const [apiKeyStatus, setApiKeyStatus] = useState<'checking' | 'found' | 'missing'>('checking');
+
+  // Save preferences when they change
+  useEffect(() => {
+    localStorage.setItem('whiteModel', whiteModel);
+  }, [whiteModel]);
+
+  useEffect(() => {
+    localStorage.setItem('blackModel', blackModel);
+  }, [blackModel]);
+
+  useEffect(() => {
+    localStorage.setItem('timeMinutes', timeMinutes.toString());
+  }, [timeMinutes]);
+
+  useEffect(() => {
+    localStorage.setItem('increment', increment.toString());
+  }, [increment]);
 
   useEffect(() => {
     // Check if API key exists on backend
@@ -27,6 +54,11 @@ const GameControls = () => {
       alert('Please set your OpenRouter API key in the .env file on the server');
       return;
     }
+
+    // Update store with current timer settings before starting
+    const { updateTime } = useGameStore.getState();
+    const timeMs = timeMinutes * 60 * 1000;
+    updateTime(timeMs, timeMs);
 
     const config: GameConfiguration = {
       whitePlayer: {
@@ -60,6 +92,10 @@ const GameControls = () => {
   const handleReset = () => {
     socketService.resetGame();
     resetGame();
+    // Reset timers to selected values when resetting the game
+    const { updateTime } = useGameStore.getState();
+    const timeMs = timeMinutes * 60 * 1000;
+    updateTime(timeMs, timeMs);
   };
 
   return (
@@ -114,33 +150,39 @@ const GameControls = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Time (minutes)
-              </label>
-              <input
-                type="number"
-                value={timeMinutes}
-                onChange={(e) => setTimeMinutes(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="1"
-                max="60"
-              />
+          <div className="border border-gray-600 rounded-lg p-3 bg-gray-750">
+            <div className="text-sm font-medium text-gray-300 mb-2 flex justify-between items-center">
+              <span>⏱️ Timer Settings</span>
+              <span className="text-xs text-blue-400">{timeMinutes} min + {increment} sec</span>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Time (minutes)
+                </label>
+                <input
+                  type="number"
+                  value={timeMinutes}
+                  onChange={(e) => setTimeMinutes(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="1"
+                  max="60"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Increment (seconds)
-              </label>
-              <input
-                type="number"
-                value={increment}
-                onChange={(e) => setIncrement(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-                max="30"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Increment (seconds)
+                </label>
+                <input
+                  type="number"
+                  value={increment}
+                  onChange={(e) => setIncrement(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0"
+                  max="30"
+                />
+              </div>
             </div>
           </div>
 
@@ -150,6 +192,40 @@ const GameControls = () => {
           >
             Start Game
           </button>
+
+          {/* Timer Presets */}
+          <div className="mt-3 space-y-1">
+            <div className="text-xs text-gray-400 mb-1">Quick Timer Presets:</div>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => {
+                  setTimeMinutes(3);
+                  setIncrement(2);
+                }}
+                className="py-1 px-2 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition"
+              >
+                Blitz 3+2
+              </button>
+              <button
+                onClick={() => {
+                  setTimeMinutes(5);
+                  setIncrement(5);
+                }}
+                className="py-1 px-2 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition"
+              >
+                Rapid 5+5
+              </button>
+              <button
+                onClick={() => {
+                  setTimeMinutes(10);
+                  setIncrement(5);
+                }}
+                className="py-1 px-2 bg-gray-700 hover:bg-gray-600 text-white text-xs rounded transition"
+              >
+                Classic 10+5
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -217,11 +293,21 @@ const GameControls = () => {
           {gameStatus === GameStatus.DRAW && (
             <div className="text-center text-lg text-white mb-2">
               Draw
+              {gameResult?.reason && (
+                <div className="text-sm text-gray-400 mt-1">
+                  {gameResult.reason}
+                </div>
+              )}
             </div>
           )}
           {gameStatus === GameStatus.STALEMATE && (
             <div className="text-center text-lg text-white mb-2">
               Stalemate - Draw
+              {gameResult?.reason && (
+                <div className="text-sm text-gray-400 mt-1">
+                  {gameResult.reason}
+                </div>
+              )}
             </div>
           )}
           <button
@@ -229,6 +315,23 @@ const GameControls = () => {
             className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md transition duration-200"
           >
             New Game
+          </button>
+
+          {/* Quick Rematch with Same Settings */}
+          <button
+            onClick={() => {
+              handleReset();
+              // Keep the same models and time settings
+              setTimeout(() => {
+                const { updateTime } = useGameStore.getState();
+                const timeMs = timeMinutes * 60 * 1000;
+                updateTime(timeMs, timeMs);
+                handleStartGame();
+              }, 100);
+            }}
+            className="w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md transition duration-200 mt-2"
+          >
+            Quick Rematch (Same Settings)
           </button>
         </div>
       )}

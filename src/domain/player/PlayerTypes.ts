@@ -22,12 +22,25 @@ export interface GameContext {
   invalidMoveFeedback?: string; // Feedback about previous invalid move attempts
 }
 
+export interface MoveResponse {
+  from: string;
+  to: string;
+  promotion?: string;
+  offerDraw?: boolean;
+}
+
+export interface DrawResponse {
+  acceptDraw: boolean;
+  reason?: string;
+}
+
 export interface LLMPlayer {
   id: string;
   color: PlayerColor;
   modelName: string;
   timeRemaining: number;
-  requestMove(gameContext: GameContext): Promise<{ from: string; to: string; promotion?: string }>;
+  requestMove(gameContext: GameContext): Promise<MoveResponse>;
+  respondToDrawOffer?(gameContext: GameContext): Promise<DrawResponse>;
   updateGameContext(gameState: GameState): void;
   getRetryCount(): number;
   incrementRetryCount(): void;

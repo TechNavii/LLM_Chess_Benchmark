@@ -1,4 +1,4 @@
-import { LLMPlayer, PlayerConfiguration, GameContext } from './PlayerTypes';
+import { LLMPlayer, PlayerConfiguration, GameContext, MoveResponse, DrawResponse } from './PlayerTypes';
 import { PlayerColor } from '../../shared/types/CommonTypes';
 import { GameState } from '../chess/ChessTypes';
 import { ILLMApiClient } from '../../infrastructure/api/LLMApiTypes';
@@ -23,7 +23,7 @@ export class LLMPlayerImpl implements LLMPlayer {
     this.apiClient = apiClient;
   }
 
-  async requestMove(gameContext: GameContext): Promise<{ from: string; to: string; promotion?: string }> {
+  async requestMove(gameContext: GameContext): Promise<MoveResponse> {
     const prompt = this.buildPrompt(gameContext);
 
     try {
@@ -39,11 +39,13 @@ RULES:
 2. No text before or after the JSON
 3. Format: {"from": "e2", "to": "e4"}
 4. For pawn promotion add: "promotion": "q"
+5. To offer a draw, add: "offerDraw": true
 
 EXAMPLES OF VALID RESPONSES:
 {"from": "e2", "to": "e4"}
 {"from": "g1", "to": "f3"}
 {"from": "e7", "to": "e8", "promotion": "q"}
+{"from": "a2", "to": "a4", "offerDraw": true}
 
 DO NOT include explanations, just the JSON move.`
           },
@@ -132,7 +134,7 @@ Please analyze the position and provide your next move. Consider:
 Respond only with a valid JSON object containing your move.`;
   }
 
-  private parseMove(responseText: string): { from: string; to: string; promotion?: string } {
+  private parseMove(responseText: string): MoveResponse {
     try {
       const jsonMatch = responseText.match(/\{[^}]+\}/);
       if (!jsonMatch) {
@@ -146,7 +148,8 @@ Respond only with a valid JSON object containing your move.`;
         return {
           from: move.from.substring(0, 2).toLowerCase(),
           to: move.from.substring(2, 4).toLowerCase(),
-          promotion: move.promotion?.toLowerCase()
+          promotion: move.promotion?.toLowerCase(),
+          offerDraw: !!move.offerDraw
         };
       }
 
@@ -157,7 +160,8 @@ Respond only with a valid JSON object containing your move.`;
       return {
         from: move.from.toLowerCase(),
         to: move.to.toLowerCase(),
-        promotion: move.promotion?.toLowerCase()
+        promotion: move.promotion?.toLowerCase(),
+        offerDraw: !!move.offerDraw
       };
     } catch (error) {
       throw new Error(`Failed to parse move from response: ${responseText}. Error: ${error}`);
@@ -181,5 +185,94 @@ Respond only with a valid JSON object containing your move.`;
       console.error(`[LLMPlayer] Failed to get response from ${this.modelName}:`, error);
       return 'Unable to provide a response due to an error';
     }
+  }
+
+  async respondToDrawOffer(gameContext: GameContext): Promise<DrawResponse> {
+    const moveCount = gameContext.moveHistory.length / 2;
+    const materialBalance = this.evaluateMaterialBalance(gameContext);
+
+    try {
+      const response = await this.apiClient.sendRequest({
+        model: this.modelName,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a chess engine playing as ${this.color}. Your opponent has offered a draw.
+
+RULES:
+1. Response must be ONLY valid JSON
+2. Format: {"acceptDraw": true/false, "reason": "optional reason"}
+3. Consider the position, material balance, and game progress
+
+EXAMPLES OF VALID RESPONSES:
+{"acceptDraw": true, "reason": "Position is equal and simplified"}
+{"acceptDraw": false, "reason": "I have a winning advantage"}
+{"acceptDraw": true}
+
+DO NOT include explanations outside the JSON.`
+          },
+          {
+            role: 'user',
+            content: `Current position (FEN): ${gameContext.gameState.fen}
+Move count: ${moveCount}
+Material balance: ${materialBalance}
+Your time: ${Math.floor(gameContext.timeRemaining / 1000)}s
+Opponent time: ${Math.floor(gameContext.opponentTimeRemaining / 1000)}s
+
+Should you accept the draw offer?`
+          }
+        ]
+      });
+
+      const parsed = this.parseDrawResponse(response.content || '{}');
+      return parsed;
+    } catch (error) {
+      console.error(`[LLMPlayer] Error responding to draw offer:`, error);
+      // Default to not accepting if there's an error
+      return { acceptDraw: false, reason: 'Error processing draw offer' };
+    }
+  }
+
+  private parseDrawResponse(responseText: string): DrawResponse {
+    try {
+      const jsonMatch = responseText.match(/\{[^}]+\}/);
+      if (!jsonMatch) {
+        return { acceptDraw: false, reason: 'Invalid response format' };
+      }
+
+      const response = JSON.parse(jsonMatch[0]);
+      return {
+        acceptDraw: !!response.acceptDraw,
+        reason: response.reason
+      };
+    } catch (error) {
+      return { acceptDraw: false, reason: 'Failed to parse response' };
+    }
+  }
+
+  private evaluateMaterialBalance(context: GameContext): string {
+    // Simple material evaluation
+    const pieces = context.gameState.fen.split(' ')[0];
+    let whiteValue = 0, blackValue = 0;
+
+    const pieceValues: Record<string, number> = {
+      'P': 1, 'N': 3, 'B': 3, 'R': 5, 'Q': 9,
+      'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9
+    };
+
+    for (const char of pieces) {
+      if (char in pieceValues) {
+        if (char === char.toUpperCase()) {
+          whiteValue += pieceValues[char];
+        } else {
+          blackValue += pieceValues[char];
+        }
+      }
+    }
+
+    const diff = whiteValue - blackValue;
+    if (Math.abs(diff) <= 1) return 'Equal';
+    if (diff > 0) return `White +${diff}`;
+    return `Black +${Math.abs(diff)}`;
   }
 }

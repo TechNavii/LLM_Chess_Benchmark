@@ -77,6 +77,8 @@ export const useGameStore = create<GameStore>((set) => ({
     currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     moveHistory: [],
     currentPlayer: 'white',
+    whiteTime: 600000,  // Reset to 10 minutes
+    blackTime: 600000,  // Reset to 10 minutes
     isThinking: false,
     thinkingText: '',
     lastMove: null,

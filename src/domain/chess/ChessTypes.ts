@@ -38,6 +38,8 @@ export interface GameState {
   pgn: string;
 }
 
+import { DrawReason } from '../../shared/types/CommonTypes';
+
 export interface MoveResult {
   success: boolean;
   move?: ChessMove;
@@ -47,6 +49,7 @@ export interface MoveResult {
   isCheckmate?: boolean;
   isStalemate?: boolean;
   isDraw?: boolean;
+  drawReason?: DrawReason;
 }
 
 export interface ValidationResult {

@@ -12,7 +12,16 @@ export enum GameStatus {
   DRAW = 'draw',
   PAUSED = 'paused',
   TIMEOUT = 'timeout',
-  FORFEIT = 'forfeit'
+  FORFEIT = 'forfeit',
+  DRAW_OFFERED = 'draw_offered'
+}
+
+export enum DrawReason {
+  STALEMATE = 'stalemate',
+  THREEFOLD_REPETITION = 'threefold_repetition',
+  FIFTY_MOVE_RULE = 'fifty_move_rule',
+  INSUFFICIENT_MATERIAL = 'insufficient_material',
+  AGREEMENT = 'agreement'
 }
 
 export enum TimerType {
@@ -57,6 +66,15 @@ export interface GameResult {
   winner?: PlayerColor;
   result: 'win' | 'draw' | 'timeout' | 'forfeit';
   reason: string;
+  drawReason?: DrawReason;
   finalPosition?: string;
   moveCount: number;
+}
+
+export interface DrawOffer {
+  player: PlayerColor;
+  moveNumber: number;
+  timestamp: Date;
+  accepted?: boolean;
+  respondedBy?: PlayerColor;
 }

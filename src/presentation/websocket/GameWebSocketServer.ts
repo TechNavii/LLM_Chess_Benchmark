@@ -15,6 +15,7 @@ export interface ServerToClientEvents {
   'game:error': (data: { message: string; code?: string }) => void;
   'game:status': (data: { status: GameStatus }) => void;
   'game:boardUpdate': (data: { fen: string; pgn: string }) => void;
+  'game:drawOffer': (data: { player: PlayerColor; accepted?: boolean; reason?: string }) => void;
 }
 
 export interface ClientToServerEvents {

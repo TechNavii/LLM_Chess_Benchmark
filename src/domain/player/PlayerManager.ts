@@ -8,6 +8,7 @@ export interface IPlayerManager {
   switchTurn(): PlayerColor;
   getCurrentPlayer(): LLMPlayer;
   getPlayerByColor(color: PlayerColor): LLMPlayer;
+  getOpponent(color: PlayerColor): LLMPlayer | undefined;
   getAllPlayers(): LLMPlayer[];
 }
 
@@ -42,6 +43,11 @@ export class PlayerManager implements IPlayerManager {
       throw new Error(`No player found for color: ${color}`);
     }
     return player;
+  }
+
+  getOpponent(color: PlayerColor): LLMPlayer | undefined {
+    const opponentColor = color === PlayerColor.WHITE ? PlayerColor.BLACK : PlayerColor.WHITE;
+    return this.players.get(opponentColor);
   }
 
   getAllPlayers(): LLMPlayer[] {

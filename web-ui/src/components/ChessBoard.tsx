@@ -4,9 +4,10 @@ const ChessBoard = () => {
   const { currentFen } = useGameStore();
 
   // Simple chess board representation
+  // You can customize these symbols as needed
   const pieces: { [key: string]: string } = {
-    'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
-    'k': '♔', 'q': '♕', 'r': '♖', 'b': '♗', 'n': '♘', 'p': '♙'
+    'K': '♚', 'Q': '♛', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+    'k': '♔', 'q': '♕', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
   };
 
   const renderBoard = () => {

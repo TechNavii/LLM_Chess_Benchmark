@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { ChessMove, GameState, MoveResult, ValidationResult, ChessPiece } from './ChessTypes';
-import { PlayerColor, GameStatus, GameRules, CastlingRights } from '../../shared/types/CommonTypes';
+import { PlayerColor, GameStatus, GameRules, CastlingRights, DrawReason } from '../../shared/types/CommonTypes';
 
 export interface IChessGameManager {
   initializeGame(config?: { fen?: string }): Promise<void>;
@@ -86,6 +86,8 @@ export class ChessGameManager implements IChessGameManager {
       this.moveHistory.push(chessMove);
       this.updateGameStatus();
 
+      const drawReason = this.getDrawReason();
+
       return {
         success: true,
         move: chessMove,
@@ -93,7 +95,8 @@ export class ChessGameManager implements IChessGameManager {
         isCheck: this.chess.inCheck(),
         isCheckmate: this.chess.isCheckmate(),
         isStalemate: this.chess.isStalemate(),
-        isDraw: this.chess.isDraw()
+        isDraw: this.chess.isDraw(),
+        drawReason
       };
     } catch (error) {
       return {
@@ -207,5 +210,38 @@ export class ChessGameManager implements IChessGameManager {
     const fen = this.chess.fen();
     const enPassant = fen.split(' ')[3];
     return enPassant === '-' ? undefined : enPassant;
+  }
+
+  private getDrawReason(): DrawReason | undefined {
+    if (!this.chess.isDraw()) {
+      return undefined;
+    }
+
+    // Check for stalemate first
+    if (this.chess.isStalemate()) {
+      return DrawReason.STALEMATE;
+    }
+
+    // Check for insufficient material
+    if (this.chess.isInsufficientMaterial()) {
+      return DrawReason.INSUFFICIENT_MATERIAL;
+    }
+
+    // Check for threefold repetition
+    if (this.chess.isThreefoldRepetition()) {
+      return DrawReason.THREEFOLD_REPETITION;
+    }
+
+    // Check for fifty-move rule
+    // The fifty-move rule is triggered when halfmove clock reaches 100 (50 full moves)
+    const fen = this.chess.fen();
+    const halfmoveClock = parseInt(fen.split(' ')[4]);
+    if (halfmoveClock >= 100) {
+      return DrawReason.FIFTY_MOVE_RULE;
+    }
+
+    // If it's a draw but none of the above, it might be a future agreement
+    // For now, return undefined
+    return undefined;
   }
 }
