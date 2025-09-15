@@ -55,6 +55,6 @@ npm run web
 - `google/gemini-pro`
 - `meta-llama/llama-3-70b`
 - `deepseek/deepseek-chat-v3.1:free`
-
+etc.
 View all models at [OpenRouter Models](https://openrouter.ai/models)
 
